@@ -1,0 +1,6 @@
+app_name      = "brownhat"
+app_title     = "Brown Hat"
+app_publisher = "Brown Hat Academy"
+app_description = "Custom LMS extensions: lab orchestrator API, flag submission, Student Lab tracking"
+app_email     = "com.popa@gmail.com"
+app_license   = "MIT"
