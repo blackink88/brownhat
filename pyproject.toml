@@ -5,7 +5,7 @@ description = "Brown Hat Academy — custom Frappe LMS extensions"
 requires-python = ">=3.10"
 readme = "README.md"
 dynamic = ["version"]
-dependencies = ["frappe"]
+dependencies = []
 
 [build-system]
 requires = ["flit_core >=3.4,<4"]
