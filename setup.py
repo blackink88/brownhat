@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="brownhat",
-    version="0.1.0",
+    version="0.1.1",
     description="Brown Hat Academy — custom Frappe LMS extensions",
     author="Brown Hat Academy",
     author_email="com.popa@gmail.com",
