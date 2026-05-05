@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "brownhat"
 version = "0.1.1"
@@ -6,7 +10,3 @@ description = "Brown Hat Academy — custom Frappe LMS extensions"
 requires-python = ">=3.10"
 readme = "README.md"
 dependencies = []
-
-[build-system]
-requires = ["setuptools", "wheel"]
-build-backend = "setuptools.backends.legacy:build"
