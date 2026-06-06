@@ -5,6 +5,10 @@ app_description = "Custom LMS extensions: lab orchestrator API, flag submission,
 app_email     = "com.popa@gmail.com"
 app_license   = "MIT"
 
+# Frappe version compatibility — Frappe Cloud parses this when deploying.
+# NPM-style semver range (space between, not comma).
+required_apps = ["frappe>=15.0.0 <17.0.0"]
+
 # Bundled assets included on every Frappe page that extends web.html.
 # (The LMS Vue SPA does NOT extend web.html; the install hook below patches
 # the LMS template directly to load the same bundle.)

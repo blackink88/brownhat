@@ -15,3 +15,6 @@ build-backend = "flit_core.buildapi"
 
 [tool.flit.module]
 name = "brownhat"
+
+[tool.bench]
+required_apps = ["frappe>=15.0.0 <17.0.0"]
