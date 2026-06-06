@@ -1,15 +1,14 @@
 """
 Tutor template patcher for the Frappe LMS Vue SPA.
 
-The Frappe LMS frontend is served from a standalone Vite-built template at
-`apps/lms/lms/www/lms.html`. It does NOT extend Frappe's `web.html`, so
-standard `app_include_js` hooks do not inject scripts into LMS pages.
+The Frappe LMS frontend serves its HTML from one of several possible paths
+depending on the LMS version and build pipeline. This module tries every
+candidate path on install / migrate and patches whichever exists.
 
-This module patches `lms.html` directly to add a <script> tag pointing at the
-tutor widget bundle, which is served from `/assets/brownhat/js/bh_tutor.bundle.js`.
-
-The patch is idempotent (marked with a comment) and is re-applied on every
-`bench migrate` so it survives LMS app updates.
+Whitelisted helpers for runtime debugging:
+  /api/method/brownhat.install_tutor.status         — inspect patch state
+  /api/method/brownhat.install_tutor.force_patch    — manually re-apply
+  /api/method/brownhat.install_tutor.force_unpatch  — manually reverse
 """
 import os
 import frappe
@@ -17,62 +16,137 @@ import frappe
 SCRIPT_TAG = '<script src="/assets/brownhat/js/bh_tutor.bundle.js" defer></script>'
 MARKER = "<!-- bh-tutor:injected -->"
 
+# Candidate locations where the LMS frontend HTML may live. Try every one;
+# patch all that exist (Vite source + dist + Frappe www).
+CANDIDATE_PATHS = [
+    ("lms", "www", "lms.html"),
+    ("lms", "www", "lms", "index.html"),
+    ("lms", "www", "index.html"),
+    ("lms", "frontend", "index.html"),          # Vite source
+    ("lms", "frontend", "dist", "index.html"),  # Vite build output
+    ("lms", "public", "frontend", "index.html"),
+    ("lms", "lms", "www", "lms.html"),          # alternate layout
+]
 
-def _lms_template_path():
+
+def _candidate_files():
+    out = []
+    for parts in CANDIDATE_PATHS:
+        try:
+            p = frappe.get_app_path(*parts)
+            out.append((p, os.path.exists(p)))
+        except Exception:
+            out.append(("/".join(parts), False))
+    return out
+
+
+def _patch_one(path):
+    """Patch a single HTML file. Returns 'patched' | 'already' | 'no-head' | 'unwritable' | 'error:<msg>'."""
     try:
-        return frappe.get_app_path("lms", "www", "lms.html")
-    except Exception:
-        return None
-
-
-def patch_lms_template():
-    """Inject the tutor <script> tag into lms.html (idempotent)."""
-    path = _lms_template_path()
-    if not path or not os.path.exists(path):
-        frappe.log_error(
-            f"brownhat tutor: target template not found at {path}",
-            "brownhat tutor install",
-        )
-        return
-
-    with open(path, "r", encoding="utf-8") as f:
-        content = f.read()
+        with open(path, "r", encoding="utf-8") as f:
+            content = f.read()
+    except Exception as e:
+        return f"read-error:{e}"
 
     if MARKER in content:
-        return  # already patched
+        return "already"
 
     snippet = f"\n\t{MARKER}\n\t{SCRIPT_TAG}\n"
     if "</head>" in content:
         new_content = content.replace("</head>", snippet + "</head>", 1)
-    else:
+    elif "<body" in content:
         new_content = content.replace("<body", snippet + "<body", 1)
+    else:
+        return "no-head"
 
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(new_content)
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(new_content)
+        return "patched"
+    except PermissionError:
+        return "unwritable"
+    except Exception as e:
+        return f"error:{e}"
 
-    frappe.logger().info(f"brownhat tutor: patched {path}")
+
+def _unpatch_one(path):
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            content = f.read()
+    except Exception as e:
+        return f"read-error:{e}"
+
+    if MARKER not in content:
+        return "already-clean"
+
+    new_lines = [
+        ln for ln in content.splitlines(keepends=True)
+        if MARKER not in ln and "bh_tutor.bundle.js" not in ln
+    ]
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("".join(new_lines))
+        return "unpatched"
+    except PermissionError:
+        return "unwritable"
+    except Exception as e:
+        return f"error:{e}"
+
+
+def patch_lms_template():
+    """Inject the tutor <script> into every LMS HTML candidate that exists."""
+    results = {}
+    for path, exists in _candidate_files():
+        if not exists:
+            results[path] = "not-found"
+            continue
+        results[path] = _patch_one(path)
+    frappe.logger().info(f"brownhat tutor patch results: {results}")
+    return results
 
 
 def unpatch_lms_template():
-    """Remove the tutor <script> tag (idempotent)."""
-    path = _lms_template_path()
-    if not path or not os.path.exists(path):
-        return
+    """Remove the tutor <script> from every LMS HTML candidate that has it."""
+    results = {}
+    for path, exists in _candidate_files():
+        if not exists:
+            results[path] = "not-found"
+            continue
+        results[path] = _unpatch_one(path)
+    return results
 
-    with open(path, "r", encoding="utf-8") as f:
-        content = f.read()
 
-    if MARKER not in content:
-        return
+@frappe.whitelist()
+def status():
+    """Diagnostic: report state of every candidate path. Callable via API."""
+    out = []
+    for path, exists in _candidate_files():
+        entry = {"path": path, "exists": exists}
+        if exists:
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    c = f.read()
+                entry["patched"] = MARKER in c
+                entry["has_head"] = "</head>" in c
+                entry["writable"] = os.access(path, os.W_OK)
+                entry["size"] = len(c)
+            except Exception as e:
+                entry["error"] = str(e)
+        out.append(entry)
+    return {
+        "marker": MARKER,
+        "script_tag": SCRIPT_TAG,
+        "candidates": out,
+    }
 
-    lines = content.splitlines(keepends=True)
-    new_lines = [
-        ln for ln in lines
-        if MARKER not in ln and "bh_tutor.bundle.js" not in ln
-    ]
-    new_content = "".join(new_lines)
 
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(new_content)
+@frappe.whitelist()
+def force_patch():
+    """Manually re-run the patcher. Callable via API. Returns per-path results."""
+    return patch_lms_template()
 
-    frappe.logger().info(f"brownhat tutor: unpatched {path}")
+
+@frappe.whitelist()
+def force_unpatch():
+    """Manually reverse the patch on all paths. Callable via API."""
+    return unpatch_lms_template()
