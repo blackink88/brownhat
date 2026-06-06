@@ -150,3 +150,50 @@ def force_patch():
 def force_unpatch():
     """Manually reverse the patch on all paths. Callable via API."""
     return unpatch_lms_template()
+
+
+@frappe.whitelist()
+def find_lms_html():
+    """Walk apps/lms looking for every .html file, with size + bh-tutor flag.
+    Lets us discover which file Frappe is ACTUALLY serving for /lms."""
+    import re
+    try:
+        lms_root = frappe.get_app_path("lms")
+    except Exception as e:
+        return {"error": f"can't resolve lms app: {e}"}
+
+    parent = os.path.dirname(lms_root)  # apps/lms
+    out = []
+    for root, dirs, files in os.walk(parent):
+        # skip node_modules, .git, __pycache__
+        dirs[:] = [d for d in dirs if d not in (".git", "node_modules", "__pycache__")]
+        for fn in files:
+            if not fn.endswith((".html", ".vue")):
+                continue
+            path = os.path.join(root, fn)
+            try:
+                size = os.path.getsize(path)
+                with open(path, "r", encoding="utf-8", errors="replace") as f:
+                    head = f.read(2000)
+                entry = {
+                    "path": path,
+                    "size": size,
+                    "has_bh_tutor": "bh-tutor" in head or "bh_tutor" in head,
+                    "has_head_tag": "</head>" in head,
+                    "has_app_div": '<div id="app"' in head,
+                }
+                out.append(entry)
+            except Exception as e:
+                out.append({"path": path, "error": str(e)})
+    return sorted(out, key=lambda x: x.get("size", 0), reverse=True)
+
+
+@frappe.whitelist()
+def read_file_head(path):
+    """Return the first 2000 chars of an absolute file path (for debugging)."""
+    if not isinstance(path, str) or not path.startswith("/home/frappe/frappe-bench/apps/"):
+        return {"error": "path must be under /home/frappe/frappe-bench/apps/"}
+    if not os.path.exists(path):
+        return {"error": "not found"}
+    with open(path, "r", encoding="utf-8", errors="replace") as f:
+        return {"content": f.read(3000)}
