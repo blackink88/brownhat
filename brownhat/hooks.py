@@ -5,9 +5,10 @@ app_description = "Custom LMS extensions: lab orchestrator API, flag submission,
 app_email     = "com.popa@gmail.com"
 app_license   = "MIT"
 
-# Frappe version compatibility — Frappe Cloud parses this when deploying.
-# NPM-style semver range (space between, not comma).
-required_apps = ["frappe>=15.0.0 <17.0.0"]
+# NOTE: Frappe Cloud Press reads compatibility from pyproject.toml's
+# [tool.bench] section. Do NOT also put it in `required_apps` here — Frappe's
+# core installer treats `required_apps` as bare app names and will try to
+# `bench get-app frappe>=15.0.0 <17.0.0` which fails as an InvalidRemoteException.
 
 # Bundled assets included on every Frappe page that extends web.html.
 # (The LMS Vue SPA does NOT extend web.html; the install hook below patches
