@@ -1,13 +1,13 @@
 """
-brownhat/lms/api.py — Whitelisted API endpoints for the lab orchestrator.
+brownhat/brown_hat/api.py — Whitelisted API endpoints for the lab orchestrator.
 
-Deploy path inside your Frappe app: brownhat/lms/api.py
+Deploy path inside your Frappe app: brownhat/brown_hat/api.py
 Each function decorated with @frappe.whitelist() becomes callable at:
-  POST /api/method/brownhat.lms.api.<function_name>
+  POST /api/method/brownhat.brown_hat.api.<function_name>
 
 The orchestrator (on labs01) calls these endpoints using its own API key/secret
-(the orchestrator-bot service account).  The React frontend never calls these
-directly — it goes through the Supabase frappe-proxy edge function.
+(the orchestrator-bot service account). The React frontend never calls these
+directly — it goes through the Vercel api/proxy.ts function.
 """
 
 import hashlib
